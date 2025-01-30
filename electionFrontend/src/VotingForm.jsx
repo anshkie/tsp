@@ -1,47 +1,61 @@
+
 import React, { useState } from "react";
 import { Lock, CheckCircle, XCircle } from "lucide-react";
-import { useNavigate } from "react-router-dom"; // Import useNavigate
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import EC from "elliptic";
+
+const ec = new EC.ec("p256");
+const G = ec.g;
+const privateKey = ec.keyFromPrivate("1");
+const publicKey = privateKey.getPublic();
 
 const VotingForm = () => {
   const [voterId, setVoterId] = useState("");
   const [vote, setVote] = useState("");
   const [message, setMessage] = useState("");
-  const navigate = useNavigate(); // Use the navigate hook
+  const [ciphertext, setCiphertext] = useState(null);
+  const navigate = useNavigate();
+
+  const encryptVote = () => {
+    if (!vote) return null;
+    const v = parseInt(vote, 10);
+    const k = ec.genKeyPair();
+    const c1 = G.mul(k.priv);
+    const c2 = publicKey.mul(k.priv).add(G.mul(v));
+    return { c1: c1.encode("hex"), c2: c2.encode("hex") };
+  };
+  
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
+  
     if (!voterId || !vote) {
       setMessage("Please complete all required fields");
       return;
     }
-
+  
+    const ciphertext = encryptVote(); // Encrypt before sending
+    if (!ciphertext) {
+      setMessage("Encryption failed");
+      return;
+    }
+  
     try {
       const response = await axios.post("https://localhost:3001/vote", {
         voterId,
-        vote,
+        vote: ciphertext,
       });
+      console.log("Sending Request:", { voterId, vote: ciphertext });
 
       setMessage(response.data);
-      setTimeout(
-        () => navigate("/results"),
-        2000 // Redirect to /results page after 2 seconds
-      );
+      setTimeout(() => navigate("/results"), 2000);
     } catch (error) {
       console.error("Error submitting vote:", error);
       setMessage("Voting process encountered an error");
     }
   };
-
-  const handleResultsRedirect = () => {
-    navigate("/results"); // Redirect to /results page
-  };
-
-  // Handle the Login button click
-  const handleLoginRedirect = () => {
-    navigate("/login"); // Redirect to /login page
-  };
+  
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black flex items-center justify-center p-6">
@@ -65,18 +79,10 @@ const VotingForm = () => {
             onChange={(e) => setVote(e.target.value)}
             className="w-full px-6 py-4 bg-gray-700 text-white border-2 border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all"
           >
-            <option value="" className="bg-gray-800">
-              Select Candidate
-            </option>
-            <option value="Candidate A" className="bg-gray-800">
-              Candidate A
-            </option>
-            <option value="Candidate B" className="bg-gray-800">
-              Candidate B
-            </option>
-            <option value="Candidate C" className="bg-gray-800">
-              Candidate C
-            </option>
+            <option value="" className="bg-gray-800">Select Candidate</option>
+            <option value="1" className="bg-gray-800">Candidate A</option>
+            <option value="2" className="bg-gray-800">Candidate B</option>
+            <option value="3" className="bg-gray-800">Candidate C</option>
           </select>
           <button
             type="submit"
@@ -85,15 +91,6 @@ const VotingForm = () => {
             <span>Submit Secure Vote</span>
           </button>
         </form>
-
-        {/* Login Button */}
-        <button
-          onClick={handleLoginRedirect}
-          className="mt-4 w-full bg-gradient-to-r from-yellow-500 to-yellow-600 text-white py-4 rounded-lg hover:opacity-90 transition-all font-semibold tracking-wider"
-        >
-          Go to Login Page
-        </button>
-
         {message && (
           <div className="mt-6 flex items-center justify-center space-x-2">
             {message.includes("Failed") ? (
@@ -101,11 +98,7 @@ const VotingForm = () => {
             ) : (
               <CheckCircle className="text-green-500 w-6 h-6" />
             )}
-            <p
-              className={`text-center py-3 rounded-lg ${
-                message.includes("Failed") ? "text-red-400" : "text-green-400"
-              }`}
-            >
+            <p className={`text-center py-3 rounded-lg ${message.includes("Failed") ? "text-red-400" : "text-green-400"}`}>
               {message}
             </p>
           </div>

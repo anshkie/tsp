@@ -1,46 +1,66 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const https = require("https");
-const http = require("http");
 const fs = require("fs");
 const cors = require("cors");
 const Voter = require("./Model/Voter");
 const axios = require("axios");
+
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 app.use(cors());
 
 // MongoDB Connection
 mongoose
-  .connect(
-    "mongodb+srv://shuklag868:118331@tsplab1.8ayne.mongodb.net/?retryWrites=true&w=majority&appName=TSPlab1"
-  )
+  .connect("mongodb+srv://anshnew41:Swatigupta02@cluster0.wuvi1.mongodb.net/votingDB?retryWrites=true&w=majority")
   .then(() => console.log("MongoDB connected successfully"))
   .catch((err) => console.error("Detailed MongoDB connection error:", err));
 
-const httpsAgent = new https.Agent({
+// Create HTTPS Agent
+const agent = new https.Agent({
   ca: fs.readFileSync("../ssl/server.crt"), // Provide the self-signed certificate
+});
+axios({
+  method: 'get',
+  url: 'https://localhost:3001/get-votes', // Make sure the protocol is 'https'
+  httpsAgent: agent,
+})
+.then(response => {
+  console.log(response.data);
+})
+.catch(error => {
+  console.error('Error fetching votes:',error);
+});
+app.get("/get-votes", async (req, res) => {
+  try {
+    const votes = await Voter.find().limit(1000); // Limit to 1000 records
+    res.json(votes);
+  } catch (error) {
+    console.error("Error fetching votes from database:", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
 });
 
 app.post("/vote", async (req, res) => {
   const { voterId, vote } = req.body;
 
   if (!voterId || !vote) {
-    return res.status(400).send("Invalid vote data");
+    return res.status(400).send("Missing voterId or vote");
   }
 
   try {
-    // Send the vote to Tally Server for recording
-    const response = await axios.post(
-      "https://localhost:3003/record-vote",
-      { voterId, vote },
-      { httpsAgent } // Use custom HTTPS agent with certificate
-    );
+    console.log("Vote received:", { voterId, vote });
 
-    res.status(200).send(response.data.message);
-  } catch (error) {
-    console.error("Error recording vote:", error.message);
-    res.status(500).send("Failed to record vote.");
+    const savedVote = await Voter.create({ voterId, vote });
+
+    console.log("Vote saved successfully:", savedVote);
+
+    res.status(200).send("Vote successfully recorded");
+  } catch (err) {
+    console.error("Error processing vote:", err);
+    res.status(500).send("Internal Server Error");
   }
 });
 
